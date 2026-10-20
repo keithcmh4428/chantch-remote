@@ -12,8 +12,10 @@
 name: CHANTCH Remote release
 
 on:
-  schedule:
-    - cron: "0 19 * * *"          # 03:00 Malaysia time
+  # Nightly run switched off until RS_PUB_KEY (brand.env) and the BUILD_PUSH_TOKEN secret exist; until then it would
+  # fail every night. To switch it back on, uncomment these two lines (03:00 Malaysia time):
+  # schedule:
+  #   - cron: "0 19 * * *"
   workflow_dispatch:
     inputs:
       tag:

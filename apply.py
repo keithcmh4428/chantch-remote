@@ -167,7 +167,7 @@ def icons(src: Path, logo: Image.Image, tray_mac: Image.Image | None) -> list:
                 "res/64x64.png"):
         png(rel)
     for rel in ("res/mac-tray-dark-x2.png", "res/mac-tray-light-x2.png"):
-        png(rel, maker=(solid if tray_mac else silhouette), base=(tray_mac or logo))
+        png(rel, maker=silhouette, base=(tray_mac or logo))   # macOS template image: one black shape
     # App icons get the full Windows set (upstream's app_icon.ico holds only 48 px: blurry on a desktop);
     # the tray icon keeps upstream's sizes.
     app_sizes = [(n, n) for n in (16, 24, 32, 48, 64, 128, 256)]
