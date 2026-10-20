@@ -1,0 +1,126 @@
+# CHANTCH Remote: daily check for a new RustDesk release; brand it and start the build.
+# Lives in the client repo (keithcmh4428/chantch-remote) as .github/workflows/release.yml. README.md explains the flow.
+#
+# 1. Latest upstream RustDesk *release* tag (never nightly); skip if a <tag>-chantch.N release already exists here
+#    (workflow_dispatch with rebuild=true builds it again as N+1).
+# 2. Untouched upstream source at that tag + hbb_common vendored in (our edits to it must travel with the branch).
+# 3. apply.py (server, key, name, icons) + make_workflow.py (Windows/macOS jobs only) + a NOTICE.
+# 4. One orphan commit pushed as build/<tag>-chantch.N with BUILD_PUSH_TOKEN (GITHUB_TOKEN may not push workflow
+#    files, and its pushes would not start the build); a pre-release is created on that commit, so the tag
+#    always points at the exact source the binaries came from (AGPL).
+# 5. The push starts chantch-build.yml on that branch: upstream's build, then asset renaming + SHA256SUMS.
+name: CHANTCH Remote release
+
+on:
+  schedule:
+    - cron: "0 19 * * *"          # 03:00 Malaysia time
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Upstream RustDesk tag, e.g. 1.5.0 (empty = latest release)"
+        required: false
+        default: ""
+      rebuild:
+        description: "Build again even if this tag was already built"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: chantch-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the overlay
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          path: overlay
+
+      - name: Pick the upstream tag and the next build number
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REBUILD: ${{ inputs.rebuild }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-}"
+          [ -n "$tag" ] || tag="$(gh api repos/rustdesk/rustdesk/releases/latest --jq .tag_name)"
+          [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "upstream tag '$tag' is not a plain x.y.z release"; exit 1; }
+          built="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[].tag_name' | grep -c "^${tag//./\\.}-chantch\.[0-9]*$" || true)"
+          if [ "$built" -gt 0 ] && [ "${REBUILD:-false}" != "true" ]; then
+            echo "RustDesk $tag already built ($built release(s)); nothing to do"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          n=$((built + 1))
+          echo "upstream $tag -> ${tag}-chantch.$n"
+          { echo "skip=false"; echo "tag=$tag"; echo "release=${tag}-chantch.$n"; } >> "$GITHUB_OUTPUT"
+
+      - name: Fetch untouched upstream source
+        if: steps.pick.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.pick.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git clone --quiet --depth 1 --branch "$TAG" --recurse-submodules --shallow-submodules \
+            https://github.com/rustdesk/rustdesk src
+          echo "upstream commit $(git -C src rev-parse HEAD), hbb_common $(git -C src/libs/hbb_common rev-parse HEAD)"
+
+      - name: Brand it (apply.py, make_workflow.py)
+        if: steps.pick.outputs.skip == 'false'
+        env:
+          RELEASE: ${{ steps.pick.outputs.release }}
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet "pillow==12.3.0"
+          .venv/bin/python overlay/apply.py --src src
+          .venv/bin/python overlay/make_workflow.py --src src --release-tag "$RELEASE"
+
+      - name: Commit as build/<release> and push
+        if: steps.pick.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.pick.outputs.tag }}
+          RELEASE: ${{ steps.pick.outputs.release }}
+          PUSH_TOKEN: ${{ secrets.BUILD_PUSH_TOKEN }}
+          OVERLAY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [ -n "$PUSH_TOKEN" ] || { echo "secret BUILD_PUSH_TOKEN is not set (README.md, setup step 3)"; exit 1; }
+          cd src
+          up="$(git rev-parse HEAD)"; hbb="$(git -C libs/hbb_common rev-parse HEAD)"
+          # Vendor hbb_common: the build checks out submodules from their upstream URL, which would drop our edits.
+          rm -rf libs/hbb_common/.git .gitmodules
+          git rm -q --cached libs/hbb_common
+          cat > CHANTCH-NOTICE.md <<EOF
+          # CHANTCH Remote ${RELEASE}
+
+          Built from RustDesk ${TAG} (https://github.com/rustdesk/rustdesk, commit ${up}; hbb_common ${hbb}),
+          licensed AGPL-3.0 (LICENSE), with the CHANTCH branding overlay from
+          https://github.com/${GITHUB_REPOSITORY}/tree/${OVERLAY_SHA} applied by apply.py and make_workflow.py.
+          This branch is the complete corresponding source of the binaries in release ${RELEASE}.
+          EOF
+          git checkout -q --orphan "build/${RELEASE}"
+          git add -A
+          git -c user.name="CHANTCH Remote build" -c user.email="noreply@chantch.com" \
+            commit -q -m "CHANTCH Remote ${RELEASE} (RustDesk ${TAG} + overlay ${OVERLAY_SHA:0:7})"
+          git push -q "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/build/${RELEASE}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Create the pre-release on that commit
+        if: steps.pick.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.pick.outputs.tag }}
+          RELEASE: ${{ steps.pick.outputs.release }}
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE" --repo "$GITHUB_REPOSITORY" --target "$sha" --prerelease \
+            --title "CHANTCH Remote $RELEASE" \
+            --notes "Built from RustDesk $TAG with the CHANTCH branding overlay. Source: branch build/$RELEASE (AGPL-3.0). Pre-release until a technician has tested it; then mark it Latest."
+          echo "Build started on branch build/$RELEASE: https://github.com/${GITHUB_REPOSITORY}/actions"
