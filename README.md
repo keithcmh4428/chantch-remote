@@ -9,7 +9,7 @@ macOS build minutes). We never edit RustDesk's code in place, and never keep a l
 |---|---|
 | `brand.env` | names, bundle id, server, server key |
 | `assets/logo.png` | the logo (not in this repo yet: `assets/README.md`) |
-| `apply.py` | 16 anchored source edits + every icon regenerated from the logo |
+| `apply.py` | 17 anchored source edits + every icon regenerated from the logo |
 | `make_workflow.py` | trims upstream's own build workflow to Windows + macOS, points the packaging at the app name |
 | `workflows/release.yml` | the daily job (goes to `.github/workflows/release.yml` in the client repo) |
 | `test-local.sh` | dry run against any upstream tag on a Linux/WSL machine, no GitHub needed |
@@ -54,6 +54,9 @@ installer: customers from the Latest link, staff PCs by RMM/script.
     key.
   - Without a configured API server, the client falls back to `admin.rustdesk.com`, but upstream skips the
     heartbeat/sysinfo upload for `*.rustdesk.com`, so the client sends nothing to RustDesk's servers.
+  - The same server and key are the client's default options (`DEFAULT_SETTINGS` in the same file), because
+    *Settings → Network* shows saved options, not the built-ins: without this the fields are empty although the
+    client uses our server. A technician can still type another server there; clearing the fields goes back to ours.
 - **Name:**
   - `APP_NAME = CHANTCHRemote` and `ORG = com.chantch` (same file).
   - Upstream detects a custom client by `APP_NAME != "RustDesk"`. That flag switches off RustDesk's own update banner
@@ -148,7 +151,7 @@ Do not call the product RustDesk or use RustDesk's logo.
 ## Tested (2026-10-20, agent sandbox, RustDesk 1.5.0)
 
 - `apply.py` on a fresh 1.5.0 checkout:
-  - all 16 edits applied (diff reviewed);
+  - all 16 edits applied (diff reviewed; the 17th, the Network page defaults, was added 2026-11-01);
   - the icons are valid: ICO size sets, an ICNS with 16–1024 px, a single-colour macOS tray image.
 - `make_workflow.py`:
   - kept 4 of 16 jobs and 3 workflow files, and removed 8 workflows;

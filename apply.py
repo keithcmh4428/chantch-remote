@@ -92,6 +92,12 @@ def edits(b: dict) -> list:
         Edit(cfg, r'^pub const RS_PUB_KEY: &str = "[^"]*";$',
              f'pub const RS_PUB_KEY: &str = "{b["RS_PUB_KEY"]}";', regex=True,
              why="built-in server key"),
+        Edit(cfg, "    pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = Default::default();",
+             "    pub static ref DEFAULT_SETTINGS: RwLock<HashMap<String, String>> = RwLock::new(HashMap::from([\n"
+             f'        ("custom-rendezvous-server".to_owned(), "{b["ID_SERVER"]}".to_owned()),\n'
+             f'        ("key".to_owned(), "{b["RS_PUB_KEY"]}".to_owned()),\n'
+             "    ]));",
+             why="Settings -> Network shows the server and key (the UI reads options, not the built-ins)"),
         Edit("src/updater.rs", "fn check_update(manually: bool) -> ResultType<()> {\n",
              "fn check_update(manually: bool) -> ResultType<()> {\n"
              "    // CHANTCH Remote: never download stock RustDesk from github.com/rustdesk over the branded client,\n"
