@@ -172,6 +172,9 @@ def main() -> None:
                       f"          python preprocess.py --arp -d ../../rustdesk --app-name {app}\n")
     m = "build-for-macOS"
     jobs[m] = replace(m, jobs[m], "RustDesk.app", f"{app}.app", count=None)
+    # GitHub retired the macos-14 runners on 2026-11-02 (brownouts before that cancel the job); macos-15 is the
+    # Apple-silicon image. Conditional, so an upstream release that already moved on needs no change here.
+    jobs[m] = jobs[m].replace("              os: macos-14,\n", "              os: macos-15,\n")
 
     kept = header + "".join(jobs[j] for j in order if j in KEEP_JOBS)
     fb.write_text(kept, encoding="utf-8")

@@ -86,6 +86,7 @@ installer: customers from the Latest link, staff PCs by RMM/script.
   The installed exe is `<APP_NAME>.exe` in upstream's own install code too.
 - **Dropped steps:** the two MSI-template steps, which serve RustDesk Server Pro's generator.
 - **macOS packaging:** `RustDesk.app` becomes `CHANTCHRemote.app` in the macOS job.
+- **macOS runner:** the Apple-silicon job moves from `macos-14` (retired by GitHub on 2026-11-02) to `macos-15`.
 - **Other workflows:** every other upstream workflow is deleted from the build branch (CI, nightly, Android, Linux,
   ...).
 
